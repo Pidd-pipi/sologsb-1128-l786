@@ -10,6 +10,7 @@ export interface VesselInput {
   homePort: string;
   length: number;
   beam: number;
+  draftDepth: number;
   grossTonnage: number;
   enginePower: number;
   operationType: FishingVessel['operationType'];
@@ -69,6 +70,7 @@ export const useVesselStore = defineStore('vessel', () => {
       homePort: input.homePort.trim(),
       length: Number(input.length),
       beam: Number(input.beam),
+      draftDepth: Number(input.draftDepth),
       grossTonnage: Number(input.grossTonnage),
       enginePower: Number(input.enginePower),
       operationType: input.operationType,

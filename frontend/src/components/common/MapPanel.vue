@@ -7,14 +7,24 @@ import { useBerthStatus } from '../../hooks/useBerthStatus';
 import { boundsOf, gridLines, projectToGrid } from '../../utils/geo';
 import { percentText } from '../../utils/format';
 
+/** 每座渔港的避风预排汇总（地图标记上叠加） */
+export interface ShelterMapSummary {
+  portId: string;
+  typhoonName: string;
+  arranged: number;
+  pending: number;
+  hasConflict: boolean;
+}
+
 const props = withDefaults(
   defineProps<{
     ports: FishingPort[];
     berths: Berth[];
     height?: number;
     focusedPortId?: string;
+    shelterSummaries?: ShelterMapSummary[];
   }>(),
-  { height: 380, focusedPortId: '' },
+  { height: 380, focusedPortId: '', shelterSummaries: () => [] },
 );
 
 const emit = defineEmits<{
@@ -47,7 +57,10 @@ interface MapNode {
   occupied: number;
   total: number;
   focused: boolean;
+  shelter: ShelterMapSummary | undefined;
 }
+
+const shelterByPort = computed(() => new Map(props.shelterSummaries.map((s) => [s.portId, s])));
 
 const nodes = computed<MapNode[]>(() =>
   props.ports.map((port) => {
@@ -61,6 +74,7 @@ const nodes = computed<MapNode[]>(() =>
       occupied: summary.occupied,
       total: summary.total,
       focused: port.id === props.focusedPortId,
+      shelter: shelterByPort.value.get(port.id),
     };
   }),
 );
@@ -175,6 +189,20 @@ watch(
         <text :x="node.x" :y="node.y + 34" text-anchor="middle" class="map-panel__meta">
           {{ node.occupied }}/{{ node.total }} 占用 {{ percentText(node.rate) }}
         </text>
+        <g v-if="node.shelter" class="map-panel__shelter" :data-testid="`map-shelter-${node.port.id}`">
+          <circle
+            :cx="node.x + 15"
+            :cy="node.y - 14"
+            r="8"
+            :fill="node.shelter.hasConflict ? '#f56c6c' : '#e6a23c'"
+            stroke="#ffffff"
+            :stroke-width="1.5"
+          />
+          <text :x="node.x + 15" :y="node.y - 10.5" text-anchor="middle" class="map-panel__shelter-num">
+            {{ node.shelter.arranged }}
+          </text>
+          <title>{{ `${node.shelter.typhoonName}：避风已排 ${node.shelter.arranged} 艘${node.shelter.pending ? `，待排 ${node.shelter.pending} 艘` : ''}${node.shelter.hasConflict ? '，存在合并冲突' : ''}` }}</title>
+        </g>
       </g>
       <text x="14" y="24" class="map-panel__caption">经纬网格（每格约 {{ ((bounds.maxLng - bounds.minLng) / 8).toFixed(2) }}° 经差）</text>
     </svg>
@@ -217,6 +245,14 @@ watch(
 .map-panel__meta {
   font-size: 11px;
   fill: #6b7c8c;
+}
+.map-panel__shelter {
+  cursor: pointer;
+}
+.map-panel__shelter-num {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #ffffff;
 }
 .map-panel__caption {
   font-size: 11px;

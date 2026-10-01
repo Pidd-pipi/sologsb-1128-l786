@@ -184,6 +184,18 @@ export const usePortStore = defineStore('port', () => {
       await db.berths.put(toPlain(next));
       berths.value = berths.value.map((b) => (b.id === berth.id ? next : b));
     }
+
+    // 预排后登记实际进出港：时间 / 泊位变化让旧避风安排失效（历史保留）。
+    // 动态取用 shelterStore 以避免 store 模块间的循环依赖。
+    try {
+      const { useShelterStore } = await import('./shelterStore');
+      const shelterStore = useShelterStore();
+      if (shelterStore.plans.length) {
+        await shelterStore.reconcileAll([...calls.value]);
+      }
+    } catch (error) {
+      console.warn('[gbfishport] 避风预排对账失败：', error);
+    }
     return call;
   }
 

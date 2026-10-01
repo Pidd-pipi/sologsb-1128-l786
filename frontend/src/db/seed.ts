@@ -1,6 +1,8 @@
 import type { FishingPort } from '../types/port';
 import type { FishingVessel } from '../types/vessel';
 import type { PortCall } from '../types/call';
+import type { ArrangeSlot, BerthAssignment, ShelterPlan } from '../types/shelter';
+import { buildAssignmentKey, emptySideDraft } from '../types/shelter';
 import { toPlain } from '../utils/format';
 import { db } from './index';
 import { buildBerthRecords } from './berth';
@@ -82,6 +84,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '石浦',
     length: 32.5,
     beam: 6.4,
+    draftDepth: 4.0,
     grossTonnage: 168,
     enginePower: 268,
     operationType: '拖网',
@@ -97,6 +100,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '沈家门',
     length: 28.6,
     beam: 5.8,
+    draftDepth: 3.5,
     grossTonnage: 120,
     enginePower: 202,
     operationType: '围网',
@@ -112,6 +116,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '高亭',
     length: 24.2,
     beam: 5.1,
+    draftDepth: 2.8,
     grossTonnage: 88,
     enginePower: 158,
     operationType: '刺网',
@@ -127,6 +132,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '石塘',
     length: 19.8,
     beam: 4.6,
+    draftDepth: 2.2,
     grossTonnage: 56,
     enginePower: 96,
     operationType: '钓具',
@@ -142,6 +148,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '石浦',
     length: 35.0,
     beam: 6.8,
+    draftDepth: 4.5,
     grossTonnage: 196,
     enginePower: 330,
     operationType: '拖网',
@@ -157,6 +164,7 @@ export const SEED_VESSELS: FishingVessel[] = [
     homePort: '沈家门',
     length: 21.5,
     beam: 4.9,
+    draftDepth: 2.5,
     grossTonnage: 72,
     enginePower: 132,
     operationType: '围网',
@@ -275,6 +283,134 @@ export const SEED_CALLS: PortCall[] = [
   },
 ];
 
+function hoursAhead(hours: number): string {
+  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
+}
+
+interface SeedAssignmentSpec {
+  berthNo: string;
+  vesselId: string;
+  slotLabel: string;
+  startHours: number;
+  endHours: number;
+}
+
+/** 构造一条避风靠泊安排（合作社 / 值班室两侧共用同一份已合并种子） */
+function seedAssignment(
+  portId: string,
+  berthDepth: number,
+  vessel: FishingVessel,
+  spec: SeedAssignmentSpec,
+): BerthAssignment {
+  const startAt = hoursAhead(spec.startHours);
+  return {
+    key: buildAssignmentKey(portId, spec.berthNo, startAt),
+    portId,
+    berthNo: spec.berthNo,
+    berthDepth,
+    vesselId: vessel.id,
+    vesselName: vessel.name,
+    vesselDraft: vessel.draftDepth,
+    startAt,
+    endAt: hoursAhead(spec.endHours),
+    slotLabel: spec.slotLabel,
+    source: 'coop',
+    status: '待落实',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * 演示避风预排方案：
+ * - 石浦中心渔港（深、6 泊位，已有 2 占用 + 1 维修）：第一批 3 艘，第二批 2 艘，
+ *   另留 1 艘待排，演示容量不足统计；
+ * - 温岭石塘渔港（浅、水深 3.9m）：小渔船排入，深吃水船因水深不足待排。
+ */
+export function buildSeedShelterPlans(ports: FishingPort[], vessels: FishingVessel[]): ShelterPlan[] {
+  const vesselMap = new Map(vessels.map((v) => [v.id, v]));
+  const plans: ShelterPlan[] = [];
+  const now = new Date().toISOString();
+
+  const build = (
+    id: string,
+    port: FishingPort,
+    typhoonName: string,
+    slots: ArrangeSlot[],
+    specs: SeedAssignmentSpec[],
+    pendingIds: string[],
+  ): ShelterPlan | null => {
+    const assignments = specs
+      .map((spec) => {
+        const vessel = vesselMap.get(spec.vesselId);
+        return vessel ? seedAssignment(port.id, port.berthDepth, vessel, spec) : null;
+      })
+      .filter((a): a is BerthAssignment => a !== null);
+    if (!assignments.length) return null;
+    const coop = { ...emptySideDraft('coop'), assignments, pendingVesselIds: pendingIds, savedAt: now };
+    const duty = { ...emptySideDraft('duty'), assignments: toPlain(assignments), pendingVesselIds: pendingIds, savedAt: now };
+    return {
+      id,
+      portId: port.id,
+      typhoonName,
+      alertAt: now,
+      slots,
+      coop,
+      duty,
+      merged: toPlain(assignments),
+      pendingVesselIds: pendingIds,
+      mergedAt: now,
+      revision: 1,
+      conflicts: [],
+      violations: [],
+      lastMergeOk: true,
+      history: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  };
+
+  const shipu = ports.find((p) => p.id === 'p-1001');
+  if (shipu) {
+    const plan = build(
+      'sp-4001',
+      shipu,
+      '18号台风「海燕」',
+      [
+        { label: '第一批 08:00-14:00', startAt: hoursAhead(8), endAt: hoursAhead(14) },
+        { label: '第二批 14:00-20:00', startAt: hoursAhead(14), endAt: hoursAhead(20) },
+      ],
+      [
+        { berthNo: 'B03', vesselId: 'v-2003', slotLabel: '第一批 08:00-14:00', startHours: 8, endHours: 14 },
+        { berthNo: 'B05', vesselId: 'v-2004', slotLabel: '第一批 08:00-14:00', startHours: 8, endHours: 14 },
+        { berthNo: 'B06', vesselId: 'v-2006', slotLabel: '第一批 08:00-14:00', startHours: 8, endHours: 14 },
+        { berthNo: 'B03', vesselId: 'v-2003', slotLabel: '第二批 14:00-20:00', startHours: 14, endHours: 20 },
+        { berthNo: 'B05', vesselId: 'v-2006', slotLabel: '第二批 14:00-20:00', startHours: 14, endHours: 20 },
+      ],
+      // v-2001（浙象渔05123）本港在泊避风，无需重复排；v-2005 第二批暂无空闲深泊位，留待排
+      ['v-2005'],
+    );
+    if (plan) plans.push(plan);
+  }
+
+  const shitang = ports.find((p) => p.id === 'p-1004');
+  if (shitang) {
+    const plan = build(
+      'sp-4002',
+      shitang,
+      '18号台风「海燕」',
+      [{ label: '第一批 09:00-15:00', startAt: hoursAhead(9), endAt: hoursAhead(15) }],
+      [
+        { berthNo: 'B01', vesselId: 'v-2004', slotLabel: '第一批 09:00-15:00', startHours: 9, endHours: 15 },
+      ],
+      // v-2003 吃水 2.8m 可进；v-2005 吃水 4.5m 超过港内水深 3.9m，待排
+      ['v-2003', 'v-2005'],
+    );
+    if (plan) plans.push(plan);
+  }
+
+  return plans;
+}
+
 /**
  * 首次进入时写入演示数据，并为缺少泊位记录的渔港补齐泊位。
  * 写库前统一 toPlain 脱代理，避免 DataCloneError。
@@ -292,5 +428,10 @@ export async function ensureSeedData(): Promise<void> {
     if (existing === 0) {
       await db.berths.bulkPut(toPlain(buildBerthRecords(port)));
     }
+  }
+  // 避风预排演示方案（与建港一致：缺则补一份，不覆盖用户方案）
+  const [planCount, vessels] = await Promise.all([db.shelterPlans.count(), db.vessels.toArray()]);
+  if (planCount === 0 && ports.length && vessels.length) {
+    await db.shelterPlans.bulkPut(toPlain(buildSeedShelterPlans(ports, vessels)));
   }
 }

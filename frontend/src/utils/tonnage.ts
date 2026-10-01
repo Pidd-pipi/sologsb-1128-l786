@@ -63,3 +63,14 @@ export function expiryText(expiry: string): string {
   if (days <= 90) return `${days} 天后到期`;
   return `有效（剩余 ${days} 天）`;
 }
+
+/**
+ * 按船长估算满载吃水（m）。
+ * 未登记吃水的历史档案用其回填，避风泊位水深适配要求渔船档案有吃水字段。
+ */
+export function estimateDraft(length: number): number {
+  const v = Number(length) || 0;
+  if (v <= 0) return 2;
+  // 经验关系：近海渔船吃水约为船长的 0.12 倍，限幅 1.0 ~ 8.0m，保留 1 位小数
+  return Math.min(8, Math.max(1, Math.round(v * 0.12 * 10) / 10));
+}

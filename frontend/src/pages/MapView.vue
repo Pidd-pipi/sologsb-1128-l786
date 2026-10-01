@@ -3,9 +3,10 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePortStore } from '../stores/portStore';
 import { useUiStore } from '../stores/uiStore';
+import { useShelterStore } from '../stores/shelterStore';
 import { useAmapLoader } from '../hooks/useAmapLoader';
 import { useBerthStatus } from '../hooks/useBerthStatus';
-import MapPanel from '../components/common/MapPanel.vue';
+import MapPanel, { type ShelterMapSummary } from '../components/common/MapPanel.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { Berth } from '../types/berth';
 import { formatDateTime, percentText } from '../utils/format';
@@ -14,6 +15,7 @@ import { haversineKm } from '../utils/geo';
 const router = useRouter();
 const portStore = usePortStore();
 const uiStore = useUiStore();
+const shelterStore = useShelterStore();
 
 const loader = useAmapLoader();
 const berthsRef = computed(() => portStore.berths);
@@ -51,8 +53,28 @@ const averageDistance = computed(() => {
 
 const statusTagType = computed(() => (loader.status.value === 'ready' ? 'success' : 'warning'));
 
+/** 每座渔港最近一次避风预排的汇总（地图节点右上角橙色徽标） */
+const shelterSummaries = computed<ShelterMapSummary[]>(() =>
+  portStore.ports
+    .map((port) => {
+      const plan = shelterStore.latestPlanOfPort(port.id);
+      if (!plan) return null;
+      return {
+        portId: port.id,
+        typhoonName: plan.typhoonName,
+        arranged: plan.merged.length,
+        pending: plan.pendingVesselIds.length,
+        hasConflict: plan.lastMergeOk === false && plan.conflicts.length > 0,
+      };
+    })
+    .filter((s): s is ShelterMapSummary => s !== null),
+);
+
+const activeShelter = computed(() => (activePortId.value ? shelterStore.latestPlanOfPort(activePortId.value) : undefined));
+
 onMounted(async () => {
   if (!portStore.ports.length) await portStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   if (portStore.ports.length) uiStore.selectPort(portStore.ports[0].id);
 });
 
@@ -87,6 +109,7 @@ function openPortDetail(): void {
       <template #title>{{ loader.reason.value }}</template>
       <template #default>
         地图 key 走 <code>VITE_AMAP_KEY</code>（当前为空时使用本地 SVG 网格视图，不请求外部地图服务）。
+        节点右上角橙色数字为该渔港最近一次台风避风预排已排船数，红色表示存在合并冲突。
       </template>
     </el-alert>
 
@@ -98,6 +121,7 @@ function openPortDetail(): void {
             :ports="portStore.ports"
             :berths="portStore.berths"
             :focused-port-id="uiStore.selectedPortId"
+            :shelter-summaries="shelterSummaries"
             :height="460"
             @select-port="onSelectPort"
           />
@@ -144,8 +168,21 @@ function openPortDetail(): void {
           <el-descriptions-item label="占用 / 空闲">
             {{ activeSummary.occupied }} / {{ activeSummary.free }}
           </el-descriptions-item>
-          <el-descriptions-item label="维修泊位">{{ activeSummary.maintenance }}</el-descriptions-item>
+        <el-descriptions-item label="维修泊位">{{ activeSummary.maintenance }}</el-descriptions-item>
         </el-descriptions>
+
+        <template v-if="activeShelter">
+          <p class="dialog-sub">避风预排 · {{ activeShelter.typhoonName }}</p>
+          <el-descriptions :column="3" size="small" border>
+            <el-descriptions-item label="已排靠泊">{{ activeShelter.merged.length }} 条</el-descriptions-item>
+            <el-descriptions-item label="待排">{{ activeShelter.pendingVesselIds.length }} 艘</el-descriptions-item>
+            <el-descriptions-item label="合并状态">
+              <el-tag size="small" :type="activeShelter.lastMergeOk === false ? 'danger' : 'success'" effect="plain">
+                {{ activeShelter.lastMergeOk === false ? `冲突 ${activeShelter.conflicts.length}` : `已合并 r${activeShelter.revision}` }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+        </template>
 
         <p class="dialog-sub">在港船舶</p>
         <el-table :data="activeSummary.occupiedBerths" size="small" border empty-text="当前无在港船舶" data-testid="summary-inport-table">

@@ -4,15 +4,19 @@ import { useRoute, useRouter } from 'vue-router';
 import { useVesselStore } from '../stores/vesselStore';
 import { usePortStore } from '../stores/portStore';
 import VesselSpecTable from '../components/common/VesselSpecTable.vue';
+import ShelterAssignmentTable from '../components/common/ShelterAssignmentTable.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { PortCall } from '../types/call';
+import type { BerthAssignment } from '../types/shelter';
 import { daysUntilExpiry, expiryText, powerTier, tonnageTier } from '../utils/tonnage';
 import { formatDateTime, formatNumber } from '../utils/format';
+import { useShelterStore } from '../stores/shelterStore';
 
 const route = useRoute();
 const router = useRouter();
 const vesselStore = useVesselStore();
 const portStore = usePortStore();
+const shelterStore = useShelterStore();
 
 const vesselId = computed(() => String(route.params.id ?? ''));
 const vessel = computed(() => vesselStore.vesselById(vesselId.value));
@@ -32,6 +36,14 @@ const occupancy = computed(() => {
 });
 
 const expiryDays = computed(() => (vessel.value ? daysUntilExpiry(vessel.value.certificateExpiry) : Number.NaN));
+
+/** 该渔船的避风靠泊安排（跨港；含已失效，历史不丢） */
+const shelterRows = computed<BerthAssignment[]>(() =>
+  vessel.value ? shelterStore.assignmentsOfVessel(vessel.value.id).map((x) => x.assignment) : [],
+);
+const shelterPortNames = computed(
+  () => new Map(portStore.ports.map((p) => [p.id, p.name])),
+);
 
 const expiryTagType = computed(() => {
   const days = expiryDays.value;
@@ -54,6 +66,7 @@ function timelineType(call: PortCall): 'primary' | 'success' {
 async function bootstrap(): Promise<void> {
   if (!vesselStore.vessels.length) await vesselStore.loadAll();
   if (!portStore.calls.length) await portStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   loaded.value = true;
 }
 
@@ -123,6 +136,22 @@ watch(vesselId, bootstrap);
       </el-row>
 
       <el-card shadow="never" class="detail-card">
+        <template #header>
+          <div class="card-head">
+            <span class="card-title">避风靠泊安排（{{ shelterRows.length }}）</span>
+            <el-button text type="primary" @click="router.push('/shelter')">避风预排</el-button>
+          </div>
+        </template>
+        <ShelterAssignmentTable
+          v-if="shelterRows.length"
+          :assignments="shelterRows"
+          :port-names="shelterPortNames"
+          dense
+        />
+        <EmptyState v-else title="暂无避风靠泊安排" description="该渔船尚未被排入避风泊位。" />
+      </el-card>
+
+      <el-card shadow="never" class="detail-card">
         <template #header><span class="card-title">进出港记录时间线（{{ calls.length }} 条）</span></template>
         <el-timeline v-if="calls.length" data-testid="call-timeline">
           <el-timeline-item
@@ -185,6 +214,17 @@ watch(vesselId, bootstrap);
 .detail-card {
   border-radius: 10px;
   margin-bottom: 16px;
+}
+.card-title {
+  font-weight: 600;
+  color: #17324d;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .card-title {
   font-weight: 600;

@@ -8,15 +8,18 @@ import { useBerthStatus } from '../hooks/useBerthStatus';
 import PortCard from '../components/common/PortCard.vue';
 import BerthGrid from '../components/common/BerthGrid.vue';
 import MapPanel from '../components/common/MapPanel.vue';
+import ShelterAssignmentTable from '../components/common/ShelterAssignmentTable.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { Berth } from '../types/berth';
 import { formatDateTime, formatNumber, percentText } from '../utils/format';
 import { supplyText } from '../types/port';
+import { useShelterStore } from '../stores/shelterStore';
 
 const route = useRoute();
 const router = useRouter();
 const portStore = usePortStore();
 const vesselStore = useVesselStore();
+const shelterStore = useShelterStore();
 
 const portId = computed(() => String(route.params.id ?? ''));
 const port = computed(() => portStore.portById(portId.value));
@@ -43,11 +46,22 @@ const recentCalls = computed(() => {
 
 const supply = computed(() => (port.value ? supplyText(port.value.supply) : '—'));
 
+const shelterPlan = computed(() => (portId.value ? shelterStore.latestPlanOfPort(portId.value) : undefined));
+const shelterAssignments = computed(() =>
+  shelterPlan.value ? shelterStore.mergedAssignmentsOfPort(shelterPlan.value.portId) : [],
+);
+const shelterPending = computed(() => {
+  if (!shelterPlan.value) return [];
+  const names = new Map(vesselStore.vessels.map((v) => [v.id, v.name]));
+  return shelterStore.pendingVesselsOfPlan(shelterPlan.value, names);
+});
+
 const loaded = ref(false);
 
 async function bootstrap(): Promise<void> {
   if (!portStore.ports.length) await portStore.loadAll();
   if (!vesselStore.vessels.length) await vesselStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   loaded.value = true;
 }
 
@@ -163,6 +177,31 @@ function onMapSelect(selectedPortId: string): void {
         <BerthGrid v-if="portBerths.length" :berths="portBerths" @select="openBerth" />
         <EmptyState v-else title="该渔港暂无泊位记录" description="点击右上角「新增泊位」为该渔港建立泊位清单。">
           <el-button type="primary" @click="addBerthVisible = true">新增泊位</el-button>
+        </EmptyState>
+      </el-card>
+
+      <el-card shadow="never" class="detail-card">
+        <template #header>
+          <div class="card-head">
+            <span class="card-title">避风预排（最近警报）</span>
+            <el-button text type="primary" @click="router.push('/shelter')">前往避风预排</el-button>
+          </div>
+        </template>
+        <template v-if="shelterPlan">
+          <p class="shelter-line" data-testid="port-shelter-banner">
+            <el-tag size="small" type="warning" effect="dark">{{ shelterPlan.typhoonName }}</el-tag>
+            警报 {{ formatDateTime(shelterPlan.alertAt) }} · 修订 r{{ shelterPlan.revision }} ·
+            已排 <b>{{ shelterAssignments.length }}</b> 条
+            <template v-if="shelterPending.length"> · 待排 <b class="shelter-pending">{{ shelterPending.length }}</b> 艘</template>
+          </p>
+          <ShelterAssignmentTable :assignments="shelterAssignments" dense />
+          <div v-if="shelterPending.length" class="shelter-pending-tags" data-testid="port-shelter-pending">
+            <span class="shelter-pending-label">待排：</span>
+            <el-tag v-for="v in shelterPending" :key="v.id" size="small" type="warning" effect="plain">{{ v.name }}</el-tag>
+          </div>
+        </template>
+        <EmptyState v-else title="暂无避风预排" description="台风警报拉响后可在避风预排页为该港建立方案。">
+          <el-button type="primary" @click="router.push('/shelter')">去避风预排</el-button>
         </EmptyState>
       </el-card>
 
@@ -311,5 +350,35 @@ function onMapSelect(selectedPortId: string): void {
   margin: 10px 0 0;
   font-size: 12px;
   color: #6b7c8c;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.shelter-line {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #4b5c6d;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.shelter-pending {
+  color: #e6a23c;
+}
+.shelter-pending-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.shelter-pending-label {
+  font-size: 12px;
+  color: #8592a0;
 }
 </style>

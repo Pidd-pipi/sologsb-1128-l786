@@ -6,7 +6,7 @@ import { useVesselStore, type VesselInput } from '../stores/vesselStore';
 import VesselSpecTable from '../components/common/VesselSpecTable.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import { HULL_MATERIALS, OPERATION_TYPES } from '../types/vessel';
-import { validateVesselNo } from '../utils/tonnage';
+import { estimateDraft, validateVesselNo } from '../utils/tonnage';
 
 const router = useRouter();
 const vesselStore = useVesselStore();
@@ -22,6 +22,7 @@ function emptyForm(): VesselInput {
     homePort: '',
     length: 24,
     beam: 5,
+    draftDepth: 2.9,
     grossTonnage: 80,
     enginePower: 160,
     operationType: '拖网',
@@ -32,6 +33,11 @@ function emptyForm(): VesselInput {
 }
 
 const form = reactive<VesselInput>(emptyForm());
+
+/** 船长变化时按经验值带出吃水（避风泊位水深适配依据），用户可再手改 */
+function syncDraft(): void {
+  form.draftDepth = estimateDraft(form.length);
+}
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入船名', trigger: 'blur' }],
@@ -174,17 +180,22 @@ function openVessel(vesselId: string): void {
           </el-col>
         </el-row>
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="6">
             <el-form-item label="船长 m" prop="length">
-              <el-input-number id="vessel-length" v-model="form.length" :min="3" :max="120" :step="0.1" :precision="1" style="width: 100%" />
+              <el-input-number id="vessel-length" v-model="form.length" :min="3" :max="120" :step="0.1" :precision="1" style="width: 100%" @change="syncDraft" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="6">
             <el-form-item label="型宽 m" prop="beam">
               <el-input-number id="vessel-beam" v-model="form.beam" :min="1" :max="30" :step="0.1" :precision="1" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="6">
+            <el-form-item label="吃水 m" prop="draftDepth">
+              <el-input-number id="vessel-draft" v-model="form.draftDepth" :min="0.5" :max="15" :step="0.1" :precision="1" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
             <el-form-item label="总吨位 t" prop="grossTonnage">
               <el-input-number id="vessel-tonnage" v-model="form.grossTonnage" :min="1" :max="2000" :step="1" style="width: 100%" />
             </el-form-item>
