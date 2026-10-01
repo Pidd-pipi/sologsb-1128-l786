@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Location, MapLocation, Tickets, Van } from '@element-plus/icons-vue';
+import { Location, MapLocation, Tickets, Umbrella, Van } from '@element-plus/icons-vue';
 import { useUiStore } from './stores/uiStore';
 
 const route = useRoute();
@@ -13,6 +13,7 @@ const activePath = computed(() => {
   if (path === '/' || path.startsWith('/ports')) return '/';
   if (path.startsWith('/vessels')) return '/vessels';
   if (path.startsWith('/calls')) return '/calls';
+  if (path.startsWith('/shelter')) return '/shelter';
   if (path.startsWith('/map')) return '/map';
   return path;
 });
@@ -49,6 +50,10 @@ watch(
         <el-menu-item index="/calls">
           <el-icon><Tickets /></el-icon>
           进出港登记
+        </el-menu-item>
+        <el-menu-item index="/shelter">
+          <el-icon><Umbrella /></el-icon>
+          避风预排
         </el-menu-item>
         <el-menu-item index="/map">
           <el-icon><MapLocation /></el-icon>

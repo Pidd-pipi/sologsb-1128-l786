@@ -3,17 +3,20 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePortStore } from '../stores/portStore';
 import { useUiStore } from '../stores/uiStore';
+import { useShelterStore } from '../stores/shelterStore';
 import { useAmapLoader } from '../hooks/useAmapLoader';
 import { useBerthStatus } from '../hooks/useBerthStatus';
 import MapPanel from '../components/common/MapPanel.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { Berth } from '../types/berth';
-import { formatDateTime, percentText } from '../utils/format';
+import { formatDateTime, formatNumber, percentText } from '../utils/format';
+import { planCounts } from '../utils/shelter';
 import { haversineKm } from '../utils/geo';
 
 const router = useRouter();
 const portStore = usePortStore();
 const uiStore = useUiStore();
+const shelterStore = useShelterStore();
 
 const loader = useAmapLoader();
 const berthsRef = computed(() => portStore.berths);
@@ -25,6 +28,7 @@ const activePortId = ref('');
 const activePort = computed(() => portStore.ports.find((p) => p.id === activePortId.value));
 const activeSummary = computed(() => (activePortId.value ? summaryOf(activePortId.value) : null));
 const activeBerths = computed<Berth[]>(() => (activePortId.value ? portStore.berthsOf(activePortId.value) : []));
+const activeShelterPlan = computed(() => (activePortId.value ? shelterStore.activePlanOfPort(activePortId.value) : undefined));
 
 const portRows = computed(() =>
   portStore.ports
@@ -53,6 +57,7 @@ const statusTagType = computed(() => (loader.status.value === 'ready' ? 'success
 
 onMounted(async () => {
   if (!portStore.ports.length) await portStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   if (portStore.ports.length) uiStore.selectPort(portStore.ports[0].id);
 });
 
@@ -66,6 +71,11 @@ function openPortDetail(): void {
   if (!activePortId.value) return;
   dialogVisible.value = false;
   void router.push(`/ports/${activePortId.value}`);
+}
+
+function openShelter(): void {
+  dialogVisible.value = false;
+  void router.push('/shelter');
 }
 </script>
 
@@ -97,6 +107,7 @@ function openPortDetail(): void {
           <MapPanel
             :ports="portStore.ports"
             :berths="portStore.berths"
+            :plans="shelterStore.plans"
             :focused-port-id="uiStore.selectedPortId"
             :height="460"
             @select-port="onSelectPort"
@@ -170,10 +181,41 @@ function openPortDetail(): void {
           <el-table-column prop="status" label="状态" width="90" />
           <el-table-column prop="vesselName" label="占用船舶" min-width="130" />
         </el-table>
+
+        <p class="dialog-sub">
+          避风预排{{ activeShelterPlan ? `（台风 ${activeShelterPlan.typhoonNo} · 已排 ${planCounts(activeShelterPlan.entries).scheduled} 艘 / 待排 ${planCounts(activeShelterPlan.entries).pending} 艘）` : '' }}
+        </p>
+        <el-table
+          v-if="activeShelterPlan"
+          :data="activeShelterPlan.entries"
+          size="small"
+          border
+          empty-text="暂无避风预排"
+          data-testid="summary-shelter-table"
+        >
+          <el-table-column prop="vesselName" label="渔船" min-width="120" />
+          <el-table-column label="吃水" width="80">
+            <template #default="scope">{{ formatNumber(scope.row.draft) }}m</template>
+          </el-table-column>
+          <el-table-column label="预排泊位" width="90">
+            <template #default="scope">{{ scope.row.berthNo ?? '待排' }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="80">
+            <template #default="scope">
+              <el-tag size="small" :type="scope.row.status === 'scheduled' ? 'success' : scope.row.status === 'invalidated' ? 'danger' : 'info'">
+                {{ scope.row.status === 'scheduled' ? '已排' : scope.row.status === 'invalidated' ? '失效' : '待排' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-button v-else size="small" type="primary" plain data-testid="goto-shelter" @click="openShelter">
+          前往避风预排
+        </el-button>
       </template>
       <template #footer>
         <el-button @click="dialogVisible = false">关闭</el-button>
         <el-button type="primary" data-testid="goto-port-detail" @click="openPortDetail">查看渔港详情</el-button>
+        <el-button type="success" @click="openShelter">避风预排</el-button>
       </template>
     </el-dialog>
   </section>

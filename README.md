@@ -42,14 +42,14 @@ sologsb-1128/
 │   ├── nginx.conf              # try_files $uri $uri/ /index.html + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # port.ts / vessel.ts / call.ts / berth.ts（4 个数据模型）
-│       ├── stores/             # portStore.ts / vesselStore.ts / uiStore.ts
-│       ├── db/                 # index.ts（Dexie v1→v3 迁移）/ berth.ts / seed.ts
+│       ├── types/              # port.ts / vessel.ts / call.ts / berth.ts / shelter.ts（5 个数据模型）
+│       ├── stores/             # portStore.ts / vesselStore.ts / shelterStore.ts / uiStore.ts
+│       ├── db/                 # index.ts（Dexie v1→v4 迁移）/ berth.ts / seed.ts
 │       ├── components/common/  # PortCard / BerthGrid / VesselSpecTable / MapPanel / EmptyState
 │       ├── hooks/              # useAmapLoader / useBerthStatus / useLocalDraft
-│       ├── pages/              # PortList / PortDetail / VesselList / VesselDetail / CallBoard / MapView
+│       ├── pages/              # PortList / PortDetail / VesselList / VesselDetail / CallBoard / ShelterBoard / MapView
 │       ├── router/index.ts
-│       └── utils/              # tonnage.ts / geo.ts / format.ts
+│       └── utils/              # tonnage.ts / geo.ts / format.ts / shelter.ts（吃水适配、时段重叠、容量分配、草稿合并）
 └── README.md
 ```
 
@@ -62,7 +62,8 @@ sologsb-1128/
 | `/vessels` | 渔船检索：按作业类型、主机功率区间、总吨位与船籍港组合查询 | FishingVessel |
 | `/vessels/:id` | 渔船档案详情：主尺度、主机功率、作业类型、证书有效期与进出港时间线 | FishingVessel、PortCall |
 | `/calls` | 进出港登记：选择渔船与类型，填写泊位号、加冰量、加油量、卸货量并同步泊位状态 | PortCall、Berth、FishingVessel |
-| `/map` | 渔港与在港渔船分布：高德 JS API 标记，未配置 key 时为 SVG 网格视图，点选弹出泊位占用摘要 | FishingPort、Berth |
+| `/shelter` | 避风预排：台风警报下合作社与值班室各用一台电脑断网预排避风泊位（吃水适配水深、同泊位时段不重叠、港内已有占用计入），回港后按稳定编号合并草稿（不同条目直接并入、同一时段两边都改列冲突、容量不足留已排船只与待排数量），整份覆盖为正式安排；实际进出港导致时间变化时旧安排失效但保留历史 | ShelterPlan、ShelterDraft、FishingVessel、Berth |
+| `/map` | 渔港与在港渔船分布：高德 JS API 标记，未配置 key 时为 SVG 网格视图，点选弹出泊位占用摘要与避风预排 | FishingPort、Berth、ShelterPlan |
 
 ## 数据存储说明
 
@@ -70,6 +71,8 @@ sologsb-1128/
   - `v1`：建 `ports`、`vessels` 表
   - `v2`：新增 `calls` 表与 `vesselId` 索引
   - `v3`：新增 `berths` 表，并按每个渔港登记的泊位数生成初始泊位记录
+  - `v4`：新增 `shelterPlans` 表（避风预排正式安排），并为缺少吃水字段的渔船档案回填估算吃水
+- **避风预排草稿走 localStorage**（键前缀 `gbfishport:shelter-draft:<渔港id>:<cooperative|duty>`），模拟台风警报下合作社与值班室各用一台电脑断网预排；回港后合并草稿，结果整份覆盖写入 `shelterPlans` 表。
 - **表单草稿走 localStorage**（键前缀 `gbfishport:draft:`），例如进出港登记草稿 `gbfishport:draft:call-board`，提交成功后自动清空。
 - 首次打开会自动写入一组演示数据（4 座渔港、6 艘渔船、8 条进出港流水与对应泊位），便于直接查看各页面效果。
 - 容器无状态：不使用数据库服务、不挂载命名卷，清空浏览器站点数据即可重置。

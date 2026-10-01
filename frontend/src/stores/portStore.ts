@@ -6,6 +6,7 @@ import { emptyPortFilter, type FishingPort, type PortFilter, type SupplyCapabili
 import type { Berth, BerthStatus } from '../types/berth';
 import type { CallDraft, PortCall } from '../types/call';
 import { buildBerthRecords } from '../db/berth';
+import { useShelterStore } from './shelterStore';
 
 export interface PortInput {
   name: string;
@@ -183,6 +184,13 @@ export const usePortStore = defineStore('port', () => {
             };
       await db.berths.put(toPlain(next));
       berths.value = berths.value.map((b) => (b.id === berth.id ? next : b));
+    }
+
+    // 预排后登记实际进出港：时间 / 泊位变化导致旧避风安排失效（历史安排保留不删）
+    try {
+      await useShelterStore().invalidateForCall(call);
+    } catch (error) {
+      console.warn('[gbfishport] 避风预排失效检查失败：', error);
     }
     return call;
   }

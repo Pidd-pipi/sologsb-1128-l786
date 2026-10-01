@@ -32,6 +32,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '进出港登记' },
   },
   {
+    path: '/shelter',
+    name: 'shelter-board',
+    component: () => import('../pages/ShelterBoard.vue'),
+    meta: { title: '避风预排' },
+  },
+  {
     path: '/map',
     name: 'map-view',
     component: () => import('../pages/MapView.vue'),

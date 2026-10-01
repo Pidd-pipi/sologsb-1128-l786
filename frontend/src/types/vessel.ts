@@ -21,6 +21,8 @@ export interface FishingVessel {
   length: number;
   /** 型宽 m */
   beam: number;
+  /** 吃水 m（避风预排按吃水与泊位水深适配） */
+  draft: number;
   /** 总吨位 */
   grossTonnage: number;
   /** 主机功率 kW */

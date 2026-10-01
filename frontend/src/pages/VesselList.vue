@@ -22,6 +22,7 @@ function emptyForm(): VesselInput {
     homePort: '',
     length: 24,
     beam: 5,
+    draft: 3.0,
     grossTonnage: 80,
     enginePower: 160,
     operationType: '拖网',
@@ -174,17 +175,22 @@ function openVessel(vesselId: string): void {
           </el-col>
         </el-row>
         <el-row :gutter="12">
-          <el-col :span="8">
+          <el-col :span="6">
             <el-form-item label="船长 m" prop="length">
               <el-input-number id="vessel-length" v-model="form.length" :min="3" :max="120" :step="0.1" :precision="1" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="6">
             <el-form-item label="型宽 m" prop="beam">
               <el-input-number id="vessel-beam" v-model="form.beam" :min="1" :max="30" :step="0.1" :precision="1" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="6">
+            <el-form-item label="吃水 m" prop="draft">
+              <el-input-number id="vessel-draft" v-model="form.draft" :min="0.5" :max="15" :step="0.1" :precision="1" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
             <el-form-item label="总吨位 t" prop="grossTonnage">
               <el-input-number id="vessel-tonnage" v-model="form.grossTonnage" :min="1" :max="2000" :step="1" style="width: 100%" />
             </el-form-item>

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, toRef, watch } from 'vue';
 import type { FishingPort } from '../../types/port';
 import type { Berth } from '../../types/berth';
+import type { ShelterPlan } from '../../types/shelter';
 import { useAmapLoader } from '../../hooks/useAmapLoader';
 import { useBerthStatus } from '../../hooks/useBerthStatus';
 import { boundsOf, gridLines, projectToGrid } from '../../utils/geo';
@@ -11,10 +12,11 @@ const props = withDefaults(
   defineProps<{
     ports: FishingPort[];
     berths: Berth[];
+    plans?: ShelterPlan[];
     height?: number;
     focusedPortId?: string;
   }>(),
-  { height: 380, focusedPortId: '' },
+  { plans: () => [], height: 380, focusedPortId: '' },
 );
 
 const emit = defineEmits<{
@@ -46,6 +48,7 @@ interface MapNode {
   rate: number;
   occupied: number;
   total: number;
+  sheltered: number;
   focused: boolean;
 }
 
@@ -53,6 +56,8 @@ const nodes = computed<MapNode[]>(() =>
   props.ports.map((port) => {
     const pos = projectToGrid(port, bounds.value, { width: WIDTH, height: HEIGHT });
     const summary = summaryOf(port.id);
+    const plan = props.plans.find((p) => p.portId === port.id && p.status === 'active');
+    const sheltered = plan ? plan.entries.filter((e) => e.status === 'scheduled').length : 0;
     return {
       port,
       x: pos.x,
@@ -60,6 +65,7 @@ const nodes = computed<MapNode[]>(() =>
       rate: summary.occupancyRate,
       occupied: summary.occupied,
       total: summary.total,
+      sheltered,
       focused: port.id === props.focusedPortId,
     };
   }),
@@ -175,6 +181,9 @@ watch(
         <text :x="node.x" :y="node.y + 34" text-anchor="middle" class="map-panel__meta">
           {{ node.occupied }}/{{ node.total }} 占用 {{ percentText(node.rate) }}
         </text>
+        <text v-if="node.sheltered" :x="node.x" :y="node.y + 50" text-anchor="middle" class="map-panel__shelter">
+          避风预排 {{ node.sheltered }} 艘
+        </text>
       </g>
       <text x="14" y="24" class="map-panel__caption">经纬网格（每格约 {{ ((bounds.maxLng - bounds.minLng) / 8).toFixed(2) }}° 经差）</text>
     </svg>
@@ -217,6 +226,11 @@ watch(
 .map-panel__meta {
   font-size: 11px;
   fill: #6b7c8c;
+}
+.map-panel__shelter {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #e6a23c;
 }
 .map-panel__caption {
   font-size: 11px;

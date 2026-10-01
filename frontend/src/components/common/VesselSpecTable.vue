@@ -43,6 +43,9 @@ function onRowClick(row: FishingVessel): void {
       <el-table-column label="型宽 m" min-width="88">
         <template #default="scope">{{ formatNumber(scope.row.beam) }}</template>
       </el-table-column>
+      <el-table-column label="吃水 m" min-width="88">
+        <template #default="scope">{{ formatNumber(scope.row.draft) }}</template>
+      </el-table-column>
       <el-table-column label="总吨位" min-width="140">
         <template #default="scope">
           {{ formatNumber(scope.row.grossTonnage) }} t

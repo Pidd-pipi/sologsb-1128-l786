@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useVesselStore } from '../stores/vesselStore';
 import { usePortStore } from '../stores/portStore';
+import { useShelterStore } from '../stores/shelterStore';
 import VesselSpecTable from '../components/common/VesselSpecTable.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { PortCall } from '../types/call';
@@ -13,12 +14,16 @@ const route = useRoute();
 const router = useRouter();
 const vesselStore = useVesselStore();
 const portStore = usePortStore();
+const shelterStore = useShelterStore();
 
 const vesselId = computed(() => String(route.params.id ?? ''));
 const vessel = computed(() => vesselStore.vesselById(vesselId.value));
 const loaded = ref(false);
 
 const calls = computed<PortCall[]>(() => (vessel.value ? portStore.callsOfVessel(vessel.value.id) : []));
+const shelterEntry = computed(() => (vessel.value ? shelterStore.entryOfVessel(vessel.value.id) : undefined));
+const shelterPlan = computed(() => (vessel.value ? shelterStore.planOfVessel(vessel.value.id) : undefined));
+const shelterPort = computed(() => (shelterPlan.value ? portStore.portById(shelterPlan.value.portId) : undefined));
 
 const occupancy = computed(() => {
   if (!vessel.value) return [] as Array<{ portName: string; berthNo: string; berthAt: string | null }>;
@@ -54,6 +59,7 @@ function timelineType(call: PortCall): 'primary' | 'success' {
 async function bootstrap(): Promise<void> {
   if (!vesselStore.vessels.length) await vesselStore.loadAll();
   if (!portStore.calls.length) await portStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   loaded.value = true;
 }
 
@@ -94,6 +100,9 @@ watch(vesselId, bootstrap);
               <el-descriptions-item label="总吨位">
                 {{ formatNumber(vessel.grossTonnage) }} t（{{ tonnageTier(vessel.grossTonnage) }}）
               </el-descriptions-item>
+              <el-descriptions-item label="吃水">
+                {{ formatNumber(vessel.draft) }} m
+              </el-descriptions-item>
               <el-descriptions-item label="主机功率">
                 {{ formatNumber(vessel.enginePower, 0) }} kW（{{ powerTier(vessel.enginePower) }}）
               </el-descriptions-item>
@@ -118,6 +127,33 @@ watch(vesselId, bootstrap);
                 <template #default="scope">{{ formatDateTime(scope.row.berthAt) }}</template>
               </el-table-column>
             </el-table>
+          </el-card>
+
+          <el-card shadow="never" class="detail-card" data-testid="vessel-shelter-card">
+            <template #header><span class="card-title">避风安排</span></template>
+            <template v-if="shelterEntry && shelterPlan">
+              <el-descriptions :column="1" size="small" border>
+                <el-descriptions-item label="台风编号">{{ shelterPlan.typhoonNo }}</el-descriptions-item>
+                <el-descriptions-item label="避风渔港">{{ shelterPort?.name ?? '—' }}</el-descriptions-item>
+                <el-descriptions-item label="预排泊位">{{ shelterEntry.berthNo ?? '待排' }}</el-descriptions-item>
+                <el-descriptions-item label="避风时段">
+                  {{ formatDateTime(shelterEntry.start) }} ~ {{ formatDateTime(shelterEntry.end) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="状态">
+                  <el-tag size="small" :type="shelterEntry.status === 'scheduled' ? 'success' : shelterEntry.status === 'invalidated' ? 'danger' : 'info'">
+                    {{ shelterEntry.status === 'scheduled' ? '已排' : shelterEntry.status === 'invalidated' ? '已失效' : '待排' }}
+                  </el-tag>
+                </el-descriptions-item>
+              </el-descriptions>
+              <p v-if="shelterEntry.invalidatedReason" class="shelter-reason">失效原因：{{ shelterEntry.invalidatedReason }}</p>
+            </template>
+            <EmptyState
+              v-else
+              title="暂无避风安排"
+              description="台风警报期间将在避风预排页为该船预排避风泊位，回港合并后可在此查看。"
+            >
+              <el-button type="primary" @click="router.push('/shelter')">前往避风预排</el-button>
+            </EmptyState>
           </el-card>
         </el-col>
       </el-row>
@@ -197,5 +233,10 @@ watch(vesselId, bootstrap);
   flex-wrap: wrap;
   font-size: 13px;
   color: #4b5c6d;
+}
+.shelter-reason {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #e6a23c;
 }
 </style>

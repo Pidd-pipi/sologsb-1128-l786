@@ -4,12 +4,14 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { usePortStore } from '../stores/portStore';
 import { useVesselStore } from '../stores/vesselStore';
+import { useShelterStore } from '../stores/shelterStore';
 import { useBerthStatus } from '../hooks/useBerthStatus';
 import PortCard from '../components/common/PortCard.vue';
 import BerthGrid from '../components/common/BerthGrid.vue';
 import MapPanel from '../components/common/MapPanel.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import type { Berth } from '../types/berth';
+import { planCounts } from '../utils/shelter';
 import { formatDateTime, formatNumber, percentText } from '../utils/format';
 import { supplyText } from '../types/port';
 
@@ -17,12 +19,14 @@ const route = useRoute();
 const router = useRouter();
 const portStore = usePortStore();
 const vesselStore = useVesselStore();
+const shelterStore = useShelterStore();
 
 const portId = computed(() => String(route.params.id ?? ''));
 const port = computed(() => portStore.portById(portId.value));
 const berthsRef = computed(() => portStore.berths);
 const { summary, summaryOf, inPortVessels } = useBerthStatus(berthsRef, portId);
 const portBerths = computed(() => portStore.berthsOf(portId.value));
+const activeShelterPlan = computed(() => shelterStore.activePlanOfPort(portId.value));
 
 const activeBerthId = ref('');
 const berthDialogVisible = ref(false);
@@ -48,6 +52,7 @@ const loaded = ref(false);
 async function bootstrap(): Promise<void> {
   if (!portStore.ports.length) await portStore.loadAll();
   if (!vesselStore.vessels.length) await vesselStore.loadAll();
+  if (!shelterStore.plans.length) await shelterStore.loadAll();
   loaded.value = true;
 }
 
@@ -163,6 +168,48 @@ function onMapSelect(selectedPortId: string): void {
         <BerthGrid v-if="portBerths.length" :berths="portBerths" @select="openBerth" />
         <EmptyState v-else title="该渔港暂无泊位记录" description="点击右上角「新增泊位」为该渔港建立泊位清单。">
           <el-button type="primary" @click="addBerthVisible = true">新增泊位</el-button>
+        </EmptyState>
+      </el-card>
+
+      <el-card shadow="never" class="detail-card" data-testid="port-shelter-card">
+        <template #header>
+          <span class="card-title">避风预排安排{{ activeShelterPlan ? ` · 台风 ${activeShelterPlan.typhoonNo}` : '' }}</span>
+        </template>
+        <template v-if="activeShelterPlan">
+          <p class="detail-hint shelter-hint">
+            已排 {{ planCounts(activeShelterPlan.entries).scheduled }} 艘 · 待排
+            {{ planCounts(activeShelterPlan.entries).pending }} 艘 · 失效
+            {{ planCounts(activeShelterPlan.entries).invalidated }} 艘 · 合并于
+            {{ formatDateTime(activeShelterPlan.mergedAt) }}
+          </p>
+          <el-table :data="activeShelterPlan.entries" size="small" border empty-text="暂无预排安排">
+            <el-table-column prop="vesselName" label="船名" min-width="120" />
+            <el-table-column label="吃水" width="80">
+              <template #default="scope">{{ formatNumber(scope.row.draft) }}m</template>
+            </el-table-column>
+            <el-table-column label="预排泊位" width="90">
+              <template #default="scope">{{ scope.row.berthNo ?? '待排' }}</template>
+            </el-table-column>
+            <el-table-column label="避风时段" min-width="260">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.start) }} ~ {{ formatDateTime(scope.row.end) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="scope">
+                <el-tag size="small" :type="scope.row.status === 'scheduled' ? 'success' : scope.row.status === 'invalidated' ? 'danger' : 'info'">
+                  {{ scope.row.status === 'scheduled' ? '已排' : scope.row.status === 'invalidated' ? '失效' : '待排' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+        <EmptyState
+          v-else
+          title="暂无生效中的避风预排安排"
+          description="台风警报期间，合作社与值班室可在避风预排页断网排泊位，回港合并后整份覆盖到本港。"
+        >
+          <el-button type="primary" @click="router.push('/shelter')">前往避风预排</el-button>
         </EmptyState>
       </el-card>
 
@@ -311,5 +358,8 @@ function onMapSelect(selectedPortId: string): void {
   margin: 10px 0 0;
   font-size: 12px;
   color: #6b7c8c;
+}
+.shelter-hint {
+  margin: 0 0 10px;
 }
 </style>

@@ -3,17 +3,21 @@ import type { FishingPort } from '../types/port';
 import type { FishingVessel } from '../types/vessel';
 import type { PortCall } from '../types/call';
 import type { Berth } from '../types/berth';
+import type { ShelterPlan } from '../types/shelter';
 import { buildBerthRecords } from './berth';
+import { estimateDraft } from '../utils/shelter';
 
 /**
  * gbfishport-db：库名固定为 gbfishport-db
- * v1 建 ports / vessels；v2 新增 calls 表与 vesselId 索引；v3 新增 berths 表并按泊位数生成初始记录。
+ * v1 建 ports / vessels；v2 新增 calls 表与 vesselId 索引；v3 新增 berths 表并按泊位数生成初始记录；
+ * v4 新增 shelterPlans 表（避风预排正式安排），并回填渔船吃水字段。
  */
 export class FishPortDatabase extends Dexie {
   ports!: Table<FishingPort, string>;
   vessels!: Table<FishingVessel, string>;
   calls!: Table<PortCall, string>;
   berths!: Table<Berth, string>;
+  shelterPlans!: Table<ShelterPlan, string>;
 
   constructor() {
     super('gbfishport-db');
@@ -52,6 +56,22 @@ export class FishPortDatabase extends Dexie {
             await berthTable.bulkPut(buildBerthRecords(port));
           }
         }
+      });
+
+    this.version(4)
+      .stores({
+        shelterPlans: 'id, portId, typhoonNo, status',
+      })
+      .upgrade(async (tx) => {
+        // v4 迁移：新增 shelterPlans 表，并为缺少吃水字段的渔船档案回填估算吃水
+        await tx
+          .table<FishingVessel, string>('vessels')
+          .toCollection()
+          .modify((vessel) => {
+            if (typeof vessel.draft !== 'number' || !Number.isFinite(vessel.draft) || vessel.draft <= 0) {
+              vessel.draft = estimateDraft(vessel);
+            }
+          });
       });
   }
 }
